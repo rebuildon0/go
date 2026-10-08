@@ -48,6 +48,8 @@ function showFailure() {
 let safe = false;
 try { safe = path.startsWith('/') && !path.startsWith('//') && !decodeURIComponent(path).includes('\\') && !decodeURIComponent(path).split(/[/?#]/).includes('..') && !/^[^/]+:/.test(fragment.replace(/^(pc-yoga|pc-tec):/, '')); } catch {}
 if (!safe) document.getElementById('msg').textContent = '配信パスを確認してください。';
+// A top-level navigation also avoids cross-origin private-network fetch permission prompts.
+else if (preferred) location.replace(hosts[0] + path);
 else Promise.any(hosts.map(probe))
   .then(base => location.replace(base + path))
   .catch(showFailure);
