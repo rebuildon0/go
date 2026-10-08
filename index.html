@@ -15,27 +15,42 @@
 <p id="msg">接続先を確認しています…</p>
 <div id="links"></div>
 <script>
-// Both PCs serve the same TOOLBOX (shared through Google Drive). Ask both and go to whichever answers first.
-// Usage: https://<this page>/#/notes/foo/bar.html  (the part after # is the path on TOOLBOX; it is never sent to GitHub)
-const hosts = ['pc-yoga', 'pc-tec'].map(h => 'https://' + h + '.tail22bf94.ts.net');
-const path = (location.hash.slice(1) || '/').replace(/^(?!\/)/, '/');
+// New links use #pc-yoga:/notes/foo/bar.html (or pc-tec). The publisher verified that PC's content.
+// Keep legacy #/notes/... links working. The fragment is never sent to GitHub.
+const names = ['pc-yoga', 'pc-tec'];
+const base = name => 'https://' + name + '.tail22bf94.ts.net';
+const fragment = location.hash.slice(1) || '/';
+const preferred = fragment.match(/^(pc-yoga|pc-tec):(\/.*)$/);
+const path = (preferred ? preferred[2] : fragment).replace(/^(?!\/)/, '/');
+const hosts = preferred ? [base(preferred[1])] : names.map(base);
 
 function probe(base) {
   const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), 5000);
-  // no-cors: an opaque response is enough to know the server is reachable.
-  return fetch(base + '/index.html?ping=' + Date.now(), { mode: 'no-cors', cache: 'no-store', signal: ctrl.signal })
+  const timer = setTimeout(() => ctrl.abort(), 2500);
+  // Reachability only: opaque responses cannot prove status/version. publish.mjs checks the full HTTPS body.
+  return fetch(base + path + (path.includes('?') ? '&' : '?') + 'ping=' + Date.now(), { method: 'HEAD', mode: 'no-cors', cache: 'no-store', signal: ctrl.signal })
     .then(() => base)
     .finally(() => clearTimeout(timer));
 }
 
-Promise.any(hosts.map(probe))
+function showFailure() {
+  const message = document.getElementById('msg');
+  message.textContent = preferred ? '配信元PCに接続できませんでした。PCの稼働とスマホのTailscale接続を確認してください。' : 'どちらのPCにも接続できませんでした。スマホのTailscale接続を確認してください。';
+  const links = document.getElementById('links');
+  for (const name of names) {
+    const link = document.createElement('a');
+    link.href = base(name) + path;
+    link.textContent = name + (preferred && name !== preferred[1] ? ' を開く（更新未確認・保存回答は別）' : ' を直接開く');
+    links.append(link);
+  }
+  // Do not automatically fall back from a verified PC to a potentially stale peer.
+}
+let safe = false;
+try { safe = path.startsWith('/') && !path.startsWith('//') && !decodeURIComponent(path).includes('\\') && !decodeURIComponent(path).split(/[/?#]/).includes('..') && !/^[^/]+:/.test(fragment.replace(/^(pc-yoga|pc-tec):/, '')); } catch {}
+if (!safe) document.getElementById('msg').textContent = '配信パスを確認してください。';
+else Promise.any(hosts.map(probe))
   .then(base => location.replace(base + path))
-  .catch(() => {
-    document.getElementById('msg').innerHTML =
-      'どちらのPCにも接続できませんでした。<br><span class="muted">スマホの Tailscale がオンか確認してください。下のリンクを直接開くこともできます。</span>';
-    document.getElementById('links').innerHTML = hosts.map(b => '<a href="' + b + path + '">' + b + path + '</a>').join('');
-  });
+  .catch(showFailure);
 </script>
 </body>
 </html>
